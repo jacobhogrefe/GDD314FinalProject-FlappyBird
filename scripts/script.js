@@ -26,46 +26,58 @@ export const Diagnostics = require('Diagnostics');
 ;(async function () {  // Enables async/await in JS [part 1]
 
   // To access scene objects
-  const [scoreText, highScoreText, scoreNumber, pipePassed] = await Promise.all([
+  const [scoreText, highScoreText, endScore, scoreNumber] = await Promise.all([
+    // text objects in the scene that need to be updated
     Scene.root.findFirst('scoreText'),
-    Scene.root.findFirst('HighScore'),
-
-    // Takes in the current score and a pulse of whether the pipe was passed or not
-    Patches.outputs.get('ScoreNumber'),
-    Patches.outputs.getPulse('PassedPipe')
+    Scene.root.findFirst('HighScoreText'),
+    Scene.root.findFirst('OverScore'),
+    // the score scalar that gets tracked
+    Patches.outputs.getScalar('ScoreNumber')
   ]);
 
   const localStorage = Persistence.local;
   let savedHighScore = 0;
  
+  // attempts to retrieve the high score data for the user
   try {
-    // get user scope data stored as 'highScore'
     savedHighScore = await localStorage.get('highScore');
 
-    // check if there is a highScore data to be displayed in the console
-    if (savedHighScore) {
-      Diagnostics.log("Score from previous session: " + savedHighScore.value);
+    // if the data is retrieved but undefined, it will set the high score to 0
+    if (savedHighScore.val == undefined) {
+      savedHighScore.val = 0;
     }
+
+    // sets the high score to a text element in the scene so there's never going to be a blank space
+    highScoreText.text = "High\nScore: " + savedHighScore.val.toString();
+
+    // check if there is a highScore data to be displayed in the console
+    Diagnostics.log("Score from previous session: " + savedHighScore.val);
+
   } catch (error) {
     // display errors in the console
-    Diagnostics.log("Error: " + error);
+    Diagnostics.log("Error line 57: " + error);
   }
 
-  pipePassed.subscribe(() => {
-    try {
-      // Attempt to store the data and if successful...
-      localStorage.set('highScore', {value: scoreNumber});
-    } catch (error) {
-      // If not successful output a failure message with the error returned
-      Diagnostics.log("Error: " + error);
-    }
+  // tracks when the score changes
+  Patches.outputs.getScalar('ScoreNumber').then(event=> {
+      // executes this function when the score changes
+      event.monitor().subscribe(function (values) {
+         
+        // set in game live score and game over screen score
+        scoreText.text = "Score: " + values.newValue.toString();
+        endScore.text = "Score:\n" + values.newValue.toString();
+        Diagnostics.log(values.newValue);
 
-    scoreText.text = scoreNumber.toString();
-    if (savedHighScore && savedHighScore.value > scoreNumber) {
-      highScoreText.text = savedHighScore.toString();
-      
-    } else {
-      highScoreText.text = scoreNumber.toString();
-    }
+        // check if it's higher than the saved high score
+        if (values.newValue > savedHighScore.val) {
+          Diagnostics.log("new high: " + values.newValue);
+          localStorage.set('highScore', {val: values.newValue});
+
+          highScoreText.text = "High\nScore: " + values.newValue.toString();
+        } else {
+          Diagnostics.log("old high: " + savedHighScore.val);
+        }
+     });
   });
+
 })(); // Enables async/await in JS [part 2]
